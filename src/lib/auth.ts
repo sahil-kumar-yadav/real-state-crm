@@ -51,7 +51,7 @@ export const authOptions: NextAuthOptions = {
                 password: { label: "Password", type: "password" },
             },
 
-            async authorize(credentials) {
+            async authorize(credentials: any) {
                 if (!credentials?.email || !credentials?.password) {
                     throw new Error("Invalid credentials");
                 }
@@ -96,7 +96,7 @@ export const authOptions: NextAuthOptions = {
     ],
 
     callbacks: {
-        async jwt({ token, user }) {
+        async jwt({ token, user }: any) {
             if (user) {
                 token.id = user.id;
                 token.role = user.role;
@@ -105,7 +105,7 @@ export const authOptions: NextAuthOptions = {
             return token;
         },
 
-        async session({ session, token }) {
+        async session({ session, token }: any) {
             if (session.user) {
                 session.user.id = token.id ?? "";
                 session.user.role = token.role ?? "CLIENT";
@@ -121,10 +121,10 @@ export const authOptions: NextAuthOptions = {
     },
 
     events: {
-        async signIn({ user }) {
+        async signIn({ user }: any) {
             console.log(`User ${user.email} signed in`);
         },
-        async signOut({ token }) {
+        async signOut({ token }: any) {
             console.log(`User ${token?.email} signed out`);
         },
     },

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatCurrency } from "@/lib/utils";
-import StatCard from "@/app/components/dashboard/StatCard";
+import StatCard from "@/components/dashboard/StatCard";
 import {
     ArrowUpRight,
     Home,
