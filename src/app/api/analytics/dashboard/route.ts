@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getAuthFromRequest } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { errorResponse, successResponse } from "@/lib/api-response";
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user || session.user.role !== "ADMIN") {
+    const user = await getAuthFromRequest(request);
+    if (!user || user.role !== "ADMIN") {
       return NextResponse.json(
         errorResponse("Only admins can access analytics", 403),
         { status: 403 }
@@ -49,22 +48,22 @@ export async function GET(request: NextRequest) {
     ]);
 
     const pendingCommissionAmount = pendingCommissions.reduce(
-      (sum, c) => sum + c.commissionAmount,
+      (sum: number, c: any) => sum + (c.commissionAmount ?? 0),
       0
     );
     const paidCommissionAmount = paidCommissions.reduce(
-      (sum, c) => sum + c.commissionAmount,
+      (sum: number, c: any) => sum + (c.commissionAmount ?? 0),
       0
     );
 
     // Calculate agent performance
-    const agentPerformance = agents.map((agent) => ({
+    const agentPerformance = agents.map((agent: any) => ({
       id: agent.id,
       name: `${agent.firstName} ${agent.lastName}`,
       properties: agent.agentProperties.length,
       leads: agent.agentLeads.length,
       commissionEarned: agent.agentCommissions.reduce(
-        (sum, c) => sum + c.commissionAmount,
+        (sum: number, c: any) => sum + (c.commissionAmount ?? 0),
         0
       ),
       status: agent.agentDetails?.status || "INACTIVE",
@@ -111,6 +110,21 @@ export async function GET(request: NextRequest) {
     );
   } catch (error) {
     console.error("Analytics error:", error);
+    const message = error instanceof Error ? error.message : "Failed to fetch analytics";
+    
+    // If database connection error, return 503 Service Unavailable
+    if (
+      message.includes("connect") ||
+      message.includes("ECONNREFUSED") ||
+      message.includes("ENOTFOUND") ||
+      message.includes("Connection refused")
+    ) {
+      return NextResponse.json(
+        errorResponse("Database connection unavailable. Using fallback data.", 503),
+        { status: 503 }
+      );
+    }
+    
     return NextResponse.json(
       errorResponse("Failed to fetch analytics", 500),
       { status: 500 }

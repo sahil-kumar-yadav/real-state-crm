@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getAuthFromRequest } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { errorResponse, successResponse, paginatedResponse } from "@/lib/api-response";
 import { calculateCommission } from "@/lib/utils";
@@ -8,8 +7,8 @@ import { calculateCommission } from "@/lib/utils";
 // GET - Fetch all commissions
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
+    const user = await getAuthFromRequest(request);
+    if (!user) {
       return NextResponse.json(
         errorResponse("Unauthorized", 401),
         { status: 401 }
@@ -27,8 +26,8 @@ export async function GET(request: NextRequest) {
     const where: any = {};
 
     // Filter by agent if not admin
-    if (session.user.role !== "ADMIN") {
-      where.agentId = session.user.id;
+    if (user.role !== "ADMIN") {
+      where.agentId = user.id;
     } else if (agentId) {
       where.agentId = agentId;
     }
@@ -62,6 +61,21 @@ export async function GET(request: NextRequest) {
     );
   } catch (error) {
     console.error("Get commissions error:", error);
+    const message = error instanceof Error ? error.message : "Failed to fetch commissions";
+    
+    // If database connection error, return 503 Service Unavailable
+    if (
+      message.includes("connect") ||
+      message.includes("ECONNREFUSED") ||
+      message.includes("ENOTFOUND") ||
+      message.includes("Connection refused")
+    ) {
+      return NextResponse.json(
+        errorResponse("Database connection unavailable. Using fallback data.", 503),
+        { status: 503 }
+      );
+    }
+    
     return NextResponse.json(
       errorResponse("Failed to fetch commissions", 500),
       { status: 500 }
@@ -72,8 +86,8 @@ export async function GET(request: NextRequest) {
 // POST - Create a new commission
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (session?.user?.role !== "ADMIN") {
+    const user = await getAuthFromRequest(request);
+    if (user?.role !== "ADMIN") {
       return NextResponse.json(
         errorResponse("Only admins can create commissions", 403),
         { status: 403 }

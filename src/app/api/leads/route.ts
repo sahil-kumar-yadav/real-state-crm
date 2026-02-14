@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getAuthFromRequest } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { leadSchema } from "@/lib/validations";
 import { errorResponse, successResponse, paginatedResponse } from "@/lib/api-response";
@@ -8,8 +7,8 @@ import { errorResponse, successResponse, paginatedResponse } from "@/lib/api-res
 // GET - Fetch all leads
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
+    const user = await getAuthFromRequest(request);
+    if (!user) {
       return NextResponse.json(
         errorResponse("Unauthorized", 401),
         { status: 401 }
@@ -28,8 +27,8 @@ export async function GET(request: NextRequest) {
     const where: any = {};
 
     // Filter by assigned agent if not admin
-    if (session.user.role !== "ADMIN") {
-      where.assignedAgentId = session.user.id;
+    if (user.role !== "ADMIN") {
+      where.assignedAgentId = user.id;
     }
 
     if (search) {
@@ -72,6 +71,21 @@ export async function GET(request: NextRequest) {
     );
   } catch (error) {
     console.error("Get leads error:", error);
+    const message = error instanceof Error ? error.message : "Failed to fetch leads";
+    
+    // If database connection error, return 503 Service Unavailable
+    if (
+      message.includes("connect") ||
+      message.includes("ECONNREFUSED") ||
+      message.includes("ENOTFOUND") ||
+      message.includes("Connection refused")
+    ) {
+      return NextResponse.json(
+        errorResponse("Database connection unavailable. Using fallback data.", 503),
+        { status: 503 }
+      );
+    }
+    
     return NextResponse.json(
       errorResponse("Failed to fetch leads", 500),
       { status: 500 }
@@ -82,8 +96,8 @@ export async function GET(request: NextRequest) {
 // POST - Create a new lead
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
+    const user = await getAuthFromRequest(request);
+    if (!user) {
       return NextResponse.json(
         errorResponse("Unauthorized", 401),
         { status: 401 }
@@ -96,7 +110,7 @@ export async function POST(request: NextRequest) {
     const lead = await prisma.lead.create({
       data: {
         ...validatedData,
-        assignedAgentId: session.user.role === "ADMIN" ? undefined : session.user.id,
+        assignedAgentId: user.role === "ADMIN" ? undefined : user.id,
       },
       include: {
         assignedAgent: { select: { id: true, firstName: true, lastName: true } },

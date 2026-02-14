@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { FiPlus as Plus } from "react-icons/fi";
 import toast from "react-hot-toast";
 
 interface Lead {
@@ -21,14 +21,73 @@ interface Lead {
   createdAt: string;
 }
 
+const MOCK_LEADS: Lead[] = [
+  {
+    id: "1",
+    firstName: "John",
+    lastName: "Anderson",
+    email: "john.anderson@email.com",
+    phone: "+1 (555) 123-4567",
+    type: "RESIDENTIAL",
+    source: "WEBSITE",
+    status: "INTERESTED",
+    budgetMin: 400000,
+    budgetMax: 500000,
+    assignedAgent: { firstName: "Sarah", lastName: "Johnson" },
+    createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    id: "2",
+    firstName: "Emily",
+    lastName: "Martinez",
+    email: "emily.martinez@email.com",
+    phone: "+1 (555) 234-5678",
+    type: "COMMERCIAL",
+    source: "REFERRAL",
+    status: "CONTACTED",
+    budgetMin: 300000,
+    budgetMax: 350000,
+    assignedAgent: { firstName: "Michael", lastName: "Brown" },
+    createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    id: "3",
+    firstName: "David",
+    lastName: "Wilson",
+    email: "david.wilson@email.com",
+    phone: "+1 (555) 345-6789",
+    type: "RESIDENTIAL",
+    source: "FACEBOOK",
+    status: "NEW",
+    budgetMin: 500000,
+    budgetMax: 650000,
+    createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    id: "4",
+    firstName: "Jessica",
+    lastName: "Taylor",
+    email: "jessica.taylor@email.com",
+    phone: "+1 (555) 456-7890",
+    type: "RESIDENTIAL",
+    source: "WEBSITE",
+    status: "CLOSED_WON",
+    budgetMin: 250000,
+    budgetMax: 300000,
+    assignedAgent: { firstName: "Sarah", lastName: "Johnson" },
+    createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+];
+
 export default function LeadsPage() {
-  const [leads, setLeads] = useState<Lead[]>([]);
+  const [leads, setLeads] = useState<Lead[]>(MOCK_LEADS);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [source, setSource] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const [useMockData, setUseMockData] = useState(false);
 
   useEffect(() => {
     const fetchLeads = async () => {
@@ -39,9 +98,32 @@ export default function LeadsPage() {
         });
         setLeads(response.data.data || []);
         setTotal(response.data.pagination?.total || 0);
+        setUseMockData(false);
       } catch (error) {
-        toast.error("Failed to fetch leads");
-        console.error(error);
+        console.warn("Failed to fetch leads, using mock data:", error);
+        // Filter mock data based on current filters
+        let filtered = MOCK_LEADS;
+        
+        if (search) {
+          filtered = filtered.filter(
+            (lead) =>
+              `${lead.firstName} ${lead.lastName}`.toLowerCase().includes(search.toLowerCase()) ||
+              lead.email.toLowerCase().includes(search.toLowerCase()) ||
+              lead.phone.includes(search)
+          );
+        }
+        
+        if (status) {
+          filtered = filtered.filter((lead) => lead.status === status);
+        }
+        
+        if (source) {
+          filtered = filtered.filter((lead) => lead.source === source);
+        }
+        
+        setLeads(filtered);
+        setTotal(filtered.length);
+        setUseMockData(true);
       } finally {
         setLoading(false);
       }
@@ -77,6 +159,16 @@ export default function LeadsPage() {
           Add Lead
         </Link>
       </div>
+
+      {/* Mock Data Warning */}
+      {useMockData && (
+        <div className="rounded-lg bg-blue-50 p-4 border border-blue-200">
+          <p className="text-sm font-semibold text-blue-800">ℹ️ Mock Data</p>
+          <p className="text-xs text-blue-700 mt-1">
+            Displaying sample leads. Connect a database to see real data.
+          </p>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="card">

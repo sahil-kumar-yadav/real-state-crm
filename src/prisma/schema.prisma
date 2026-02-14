@@ -6,7 +6,6 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
 }
 
 // ==================== AUTHENTICATION ====================
@@ -193,7 +192,7 @@ model Property {
   @@index([status])
   @@index([city])
   @@index([type])
-  @@fulltext([title, description, address])
+  // fulltext index removed for compatibility with current datasource
 }
 
 model PropertyImage {

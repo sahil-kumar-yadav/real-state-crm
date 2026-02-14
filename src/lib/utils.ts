@@ -1,7 +1,8 @@
 // lib/utils.ts
 import { type ClassValue, clsx } from "clsx";
-import { UserRole } from "@prisma/client";
-import { Session } from "next-auth";
+
+// Define local UserRole type to avoid relying on Prisma generated types at runtime
+export type UserRole = "ADMIN" | "AGENT" | "CLIENT";
 
 export function cn(...inputs: ClassValue[]) {
   return clsx(inputs);

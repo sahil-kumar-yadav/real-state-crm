@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getAuthFromRequest } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { propertyVisitSchema } from "@/lib/validations";
 import { errorResponse, successResponse, paginatedResponse } from "@/lib/api-response";
@@ -8,8 +7,8 @@ import { errorResponse, successResponse, paginatedResponse } from "@/lib/api-res
 // GET - Fetch all property visits
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
+    const user = await getAuthFromRequest(request);
+    if (!user) {
       return NextResponse.json(
         errorResponse("Unauthorized", 401),
         { status: 401 }
@@ -27,15 +26,15 @@ export async function GET(request: NextRequest) {
     const where: any = {};
 
     // Filter by assigned agent if not admin
-    if (session.user.role !== "ADMIN") {
-      where.assignedAgentId = session.user.id;
+    if (user.role !== "ADMIN") {
+      where.assignedAgentId = user.id;
     }
 
     if (status) {
       where.status = status;
     }
 
-    if (agentId && session.user.role === "ADMIN") {
+    if (agentId && user.role === "ADMIN") {
       where.assignedAgentId = agentId;
     }
 
@@ -59,6 +58,21 @@ export async function GET(request: NextRequest) {
     );
   } catch (error) {
     console.error("Get visits error:", error);
+    const message = error instanceof Error ? error.message : "Failed to fetch visits";
+    
+    // If database connection error, return 503 Service Unavailable
+    if (
+      message.includes("connect") ||
+      message.includes("ECONNREFUSED") ||
+      message.includes("ENOTFOUND") ||
+      message.includes("Connection refused")
+    ) {
+      return NextResponse.json(
+        errorResponse("Database connection unavailable. Using fallback data.", 503),
+        { status: 503 }
+      );
+    }
+    
     return NextResponse.json(
       errorResponse("Failed to fetch visits", 500),
       { status: 500 }
@@ -69,8 +83,8 @@ export async function GET(request: NextRequest) {
 // POST - Create a new property visit
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
+    const user = await getAuthFromRequest(request);
+    if (!user) {
       return NextResponse.json(
         errorResponse("Unauthorized", 401),
         { status: 401 }

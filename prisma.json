@@ -1,0 +1,3 @@
+{
+  "schema": "./src/prisma/schema.prisma"
+}

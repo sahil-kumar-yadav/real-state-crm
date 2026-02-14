@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { FiPlus as Plus } from "react-icons/fi";
 import toast from "react-hot-toast";
 import { formatDate } from "@/lib/utils";
 
@@ -18,12 +18,61 @@ interface PropertyVisit {
   rating?: number;
 }
 
+const MOCK_VISITS: PropertyVisit[] = [
+  {
+    id: "1",
+    status: "COMPLETED",
+    scheduledAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+    lead: { firstName: "John", lastName: "Anderson", phone: "+1 (555) 123-4567" },
+    property: { title: "Luxury Modern Home", address: "123 Oak Street, Downtown" },
+    assignedAgent: { firstName: "Sarah", lastName: "Johnson" },
+    feedback: "Client very impressed with the property",
+    rating: 5,
+  },
+  {
+    id: "2",
+    status: "SCHEDULED",
+    scheduledAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+    lead: { firstName: "Emily", lastName: "Martinez", phone: "+1 (555) 234-5678" },
+    property: { title: "Cozy Suburban Cottage", address: "456 Maple Avenue, Suburbs" },
+    assignedAgent: { firstName: "Michael", lastName: "Brown" },
+  },
+  {
+    id: "3",
+    status: "COMPLETED",
+    scheduledAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    lead: { firstName: "David", lastName: "Wilson", phone: "+1 (555) 345-6789" },
+    property: { title: "Downtown Penthouse", address: "789 Park Avenue, Downtown" },
+    assignedAgent: { firstName: "Sarah", lastName: "Johnson" },
+    feedback: "Client interested, awaiting offer",
+    rating: 4,
+  },
+  {
+    id: "4",
+    status: "SCHEDULED",
+    scheduledAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
+    lead: { firstName: "Jessica", lastName: "Taylor", phone: "+1 (555) 456-7890" },
+    property: { title: "Family Townhouse", address: "321 Elm Street, Suburbs" },
+    assignedAgent: { firstName: "Michael", lastName: "Brown" },
+  },
+  {
+    id: "5",
+    status: "NO_SHOW",
+    scheduledAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+    lead: { firstName: "Robert", lastName: "Jackson", phone: "+1 (555) 567-8901" },
+    property: { title: "Waterfront Property", address: "555 Beach Road, Waterfront" },
+    assignedAgent: { firstName: "Sarah", lastName: "Johnson" },
+    feedback: "Client did not show up",
+  },
+];
+
 export default function VisitsPage() {
-  const [visits, setVisits] = useState<PropertyVisit[]>([]);
+  const [visits, setVisits] = useState<PropertyVisit[]>(MOCK_VISITS);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const [useMockData, setUseMockData] = useState(false);
 
   useEffect(() => {
     const fetchVisits = async () => {
@@ -34,9 +83,19 @@ export default function VisitsPage() {
         });
         setVisits(response.data.data || []);
         setTotal(response.data.pagination?.total || 0);
+        setUseMockData(false);
       } catch (error) {
-        toast.error("Failed to fetch visits");
-        console.error(error);
+        console.warn("Failed to fetch visits, using mock data:", error);
+        // Filter mock data based on current filters
+        let filtered = MOCK_VISITS;
+        
+        if (status) {
+          filtered = filtered.filter((visit) => visit.status === status);
+        }
+        
+        setVisits(filtered);
+        setTotal(filtered.length);
+        setUseMockData(true);
       } finally {
         setLoading(false);
       }
@@ -69,6 +128,16 @@ export default function VisitsPage() {
           Schedule Visit
         </Link>
       </div>
+
+      {/* Mock Data Warning */}
+      {useMockData && (
+        <div className="rounded-lg bg-blue-50 p-4 border border-blue-200">
+          <p className="text-sm font-semibold text-blue-800">ℹ️ Mock Data</p>
+          <p className="text-xs text-blue-700 mt-1">
+            Displaying sample visits. Connect a database to see real data.
+          </p>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="card">

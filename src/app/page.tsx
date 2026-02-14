@@ -1,25 +1,33 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { verifyToken } from "@/lib/auth";
 
 export default async function Home() {
-  const session = await getServerSession(authOptions);
-
-  if (session) {
-    redirect("/dashboard");
+  // Check if user is logged in by verifying JWT token
+  const cookieStore = await cookies();
+  const token = cookieStore.get("auth-token")?.value;
+  
+  // Redirect logged-in users
+  if (token) {
+    const payload = await verifyToken(token);
+    if (payload) {
+      redirect("/dashboard");
+    }
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      {/* Navigation */}
+      {/* ================= Navigation ================= */}
       <nav className="border-b border-gray-200 bg-white">
         <div className="container-max flex-between py-4">
           <div className="flex items-center gap-2">
             <div className="flex-center h-10 w-10 rounded-lg bg-blue-600">
               <span className="text-lg font-bold text-white">RE</span>
             </div>
-            <h1 className="text-xl font-bold text-gray-900">Real Estate CRM</h1>
+            <h1 className="text-xl font-bold text-gray-900">
+              Real Estate CRM
+            </h1>
           </div>
           <div className="flex gap-4">
             <Link
@@ -38,7 +46,7 @@ export default async function Home() {
         </div>
       </nav>
 
-      {/* Hero Section */}
+      {/* ================= Hero Section ================= */}
       <section className="container-max py-32">
         <div className="text-center">
           <h2 className="mb-6 text-5xl font-bold text-gray-900 md:text-6xl">
@@ -59,7 +67,7 @@ export default async function Home() {
         </div>
       </section>
 
-      {/* Features Section */}
+      {/* ================= Features Section ================= */}
       <section id="features" className="bg-white py-20">
         <div className="container-max">
           <h3 className="mb-12 text-center text-3xl font-bold text-gray-900">
@@ -92,7 +100,7 @@ export default async function Home() {
                 desc: "AI-powered follow-up suggestions for better lead conversion",
               },
             ].map((feature, idx) => (
-              <div key={idx} className="card-hover">
+              <div key={idx} className="card-hover rounded-lg border border-gray-200 p-6 shadow-sm transition hover:shadow-md">
                 <h4 className="mb-2 text-lg font-semibold text-gray-900">
                   {feature.title}
                 </h4>
@@ -103,7 +111,7 @@ export default async function Home() {
         </div>
       </section>
 
-      {/* CTA Section */}
+      {/* ================= CTA Section ================= */}
       <section className="bg-blue-600 py-16">
         <div className="container-max text-center">
           <h3 className="mb-4 text-3xl font-bold text-white">
@@ -112,16 +120,19 @@ export default async function Home() {
           <p className="mb-8 text-lg text-blue-100">
             Join hundreds of successful real estate agencies using our CRM
           </p>
-          <Link href="/auth/register" className="btn-primary px-8 py-3">
+          <Link
+            href="/auth/register"
+            className="rounded-lg bg-white px-8 py-3 font-semibold text-blue-600 shadow hover:bg-gray-100"
+          >
             Start Your Free Trial Today
           </Link>
         </div>
       </section>
 
-      {/* Footer */}
+      {/* ================= Footer ================= */}
       <footer className="border-t border-gray-200 bg-white py-8">
         <div className="container-max text-center text-gray-600">
-          <p>&copy; 2024 Real Estate CRM. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} Real Estate CRM. All rights reserved.</p>
         </div>
       </footer>
     </div>

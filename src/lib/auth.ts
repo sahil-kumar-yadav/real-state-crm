@@ -1,139 +1,170 @@
-import type { NextAuthOptions, DefaultSession } from "next-auth";
-import type { DefaultJWT } from "next-auth/jwt";
-import CredentialsProvider from "next-auth/providers/credentials";
-import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import { jwtVerify, SignJWT } from "jose";
+import { cookies } from "next/headers";
 
-/* =========================
-   Module Augmentation
-========================= */
+const secret = new TextEncoder().encode(
+  process.env.JWT_SECRET || "your-secret-key-change-in-production"
+);
 
-declare module "next-auth" {
-    interface Session {
-        user: {
-            id: string;
-            role: "ADMIN" | "AGENT" | "CLIENT";
-            firstName?: string | null;
-            lastName?: string | null;
-            avatar?: string | null;
-        } & DefaultSession["user"];
-    }
+export type UserRole = "ADMIN" | "AGENT" | "CLIENT";
 
-    interface User {
-        id: string;
-        role: "ADMIN" | "AGENT" | "CLIENT";
-        firstName?: string | null;
-        lastName?: string | null;
-        avatar?: string | null;
-    }
-}
-
-declare module "next-auth/jwt" {
-    interface JWT extends DefaultJWT {
-        id?: string;
-        role?: "ADMIN" | "AGENT" | "CLIENT";
-    }
+export interface JWTPayload {
+  id: string;
+  email: string;
+  role: UserRole;
+  firstName?: string | null;
+  lastName?: string | null;
+  avatar?: string | null;
+  iat?: number;
+  exp?: number;
 }
 
 /* =========================
-   Auth Options
+   JWT Token Management
 ========================= */
 
-export const authOptions: NextAuthOptions = {
-    adapter: PrismaAdapter(prisma),
+export async function createToken(payload: JWTPayload): Promise<string> {
+  const token = await new SignJWT(payload)
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("24h")
+    .sign(secret);
+  return token;
+}
 
-    providers: [
-        CredentialsProvider({
-            name: "Credentials",
-            credentials: {
-                email: { label: "Email", type: "email" },
-                password: { label: "Password", type: "password" },
-            },
+export async function verifyToken(token: string): Promise<JWTPayload | null> {
+  try {
+    const verified = await jwtVerify(token, secret);
+    return verified.payload as JWTPayload;
+  } catch (error) {
+    return null;
+  }
+}
 
-            async authorize(credentials: any) {
-                if (!credentials?.email || !credentials?.password) {
-                    throw new Error("Invalid credentials");
-                }
+export async function setAuthCookie(token: string) {
+  const cookieStore = await cookies();
+  cookieStore.set("auth-token", token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 24 * 60 * 60, // 24 hours
+  });
+}
 
-                const user = await prisma.user.findUnique({
-                    where: { email: credentials.email },
-                });
+export async function getAuthToken(): Promise<string | null> {
+  const cookieStore = await cookies();
+  return cookieStore.get("auth-token")?.value || null;
+}
 
-                if (!user || !user.password) {
-                    throw new Error("Invalid credentials");
-                }
+export async function clearAuthCookie() {
+  const cookieStore = await cookies();
+  cookieStore.delete("auth-token");
+}
 
-                const passwordMatch = await bcrypt.compare(
-                    credentials.password,
-                    user.password
-                );
+export async function getCurrentUser(): Promise<JWTPayload | null> {
+  const token = await getAuthToken();
+  if (!token) return null;
+  return verifyToken(token);
+}
 
-                if (!passwordMatch) {
-                    throw new Error("Invalid credentials");
-                }
+/* =========================
+   Authentication Functions
+========================= */
 
-                if (!user.isActive) {
-                    throw new Error("User account is inactive");
-                }
+export async function validateCredentials(
+  email: string,
+  password: string
+): Promise<JWTPayload | null> {
+  if (!email || !password) {
+    return null;
+  }
 
-                // Update last login
-                await prisma.user.update({
-                    where: { id: user.id },
-                    data: { lastLogin: new Date() },
-                });
+  const user = await prisma.user.findUnique({
+    where: { email },
+  });
 
-                return {
-                    id: user.id,
-                    email: user.email,
-                    role: user.role as "ADMIN" | "AGENT" | "CLIENT",
-                    firstName: user.firstName,
-                    lastName: user.lastName,
-                    avatar: user.avatar,
-                };
-            },
-        }),
-    ],
+  if (!user || !user.password) {
+    return null;
+  }
 
-    callbacks: {
-        async jwt({ token, user }: any) {
-            if (user) {
-                token.id = user.id;
-                token.role = user.role;
-                token.email = user.email;
-            }
-            return token;
-        },
+  const passwordMatch = await bcrypt.compare(password, user.password);
 
-        async session({ session, token }: any) {
-            if (session.user) {
-                session.user.id = token.id ?? "";
-                session.user.role = token.role ?? "CLIENT";
-                session.user.email = token.email ?? session.user.email;
-            }
-            return session;
-        },
-    },
+  if (!passwordMatch) {
+    return null;
+  }
 
-    pages: {
-        signIn: "/auth/login",
-        error: "/auth/error",
-    },
+  if (!user.isActive) {
+    return null;
+  }
 
-    events: {
-        async signIn({ user }: any) {
-            console.log(`User ${user.email} signed in`);
-        },
-        async signOut({ token }: any) {
-            console.log(`User ${token?.email} signed out`);
-        },
-    },
+  // Update last login
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { lastLogin: new Date() },
+  });
 
-    session: {
-        strategy: "jwt",
-        maxAge: 30 * 24 * 60 * 60,
-        updateAge: 24 * 60 * 60,
-    },
+  return {
+    id: user.id,
+    email: user.email,
+    role: user.role as UserRole,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    avatar: user.avatar,
+  };
+}
 
-    secret: process.env.NEXTAUTH_SECRET,
-};
+// Backdoor function for testing (use with caution!)
+export async function getDemoUser(role: "ADMIN" | "AGENT" | "CLIENT" = "ADMIN"): Promise<JWTPayload | null> {
+  const user = await prisma.user.findFirst({
+    where: { role },
+  });
+
+  if (!user) {
+    return null;
+  }
+
+  return {
+    id: user.id,
+    email: user.email,
+    role: user.role as UserRole,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    avatar: user.avatar,
+  };
+}
+
+/* =========================
+   API Route Authentication
+========================= */
+
+export async function getAuthFromRequest(request: Request): Promise<JWTPayload | null> {
+  try {
+    // Get token from Authorization header or Cookie
+    const authHeader = request.headers.get("authorization");
+    let token: string | null = null;
+
+    if (authHeader?.startsWith("Bearer ")) {
+      token = authHeader.slice(7);
+    } else {
+      // Try to get from cookies
+      const cookieHeader = request.headers.get("cookie");
+      if (cookieHeader) {
+        const cookies = cookieHeader.split("; ").reduce((acc, cookie) => {
+          const [key, value] = cookie.split("=");
+          acc[key] = decodeURIComponent(value);
+          return acc;
+        }, {} as Record<string, string>);
+        token = cookies["auth-token"];
+      }
+    }
+
+    if (!token) {
+      return null;
+    }
+
+    return verifyToken(token);
+  } catch (error) {
+    return null;
+  }
+}
