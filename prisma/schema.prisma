@@ -1,0 +1,485 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ==================== AUTHENTICATION ====================
+
+enum UserRole {
+  ADMIN
+  AGENT
+  CLIENT
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String?
+  firstName String?
+  lastName  String?
+  phone     String?
+  role      UserRole @default(AGENT)
+  avatar    String?
+  
+  // Agent specific fields
+  agentDetails   AgentDetails?
+  agentProperties Property[]
+  agentLeads      Lead[] @relation("AssignedAgent")
+  agentVisits     PropertyVisit[] @relation("AssignedAgent")
+  agentCommissions Commission[]
+  
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  lastLogin DateTime?
+  isActive  Boolean  @default(true)
+  
+  // NextAuth relations
+  accounts Account[]
+  sessions Session[]
+
+  @@index([email])
+  @@index([role])
+}
+
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String
+  type               String
+  provider           String
+  providerAccountId  String
+  refresh_token      String?  @db.Text
+  access_token       String?  @db.Text
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String?  @db.Text
+  session_state      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  sessionToken String   @unique
+  userId    String
+  expires   DateTime
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ==================== AGENT MANAGEMENT ====================
+
+enum AgentStatus {
+  ACTIVE
+  INACTIVE
+  ON_LEAVE
+}
+
+model AgentDetails {
+  id              String        @id @default(cuid())
+  userId          String        @unique
+  employeeId      String        @unique
+  status          AgentStatus   @default(ACTIVE)
+  commissionRate  Float         @default(3.0) // percentage
+  totalSales      Float         @default(0)
+  totalCommission Float         @default(0)
+  closedDeals     Int           @default(0)
+  
+  specializations String[]      @default([]) // ["residential", "commercial", "luxury"]
+  bio             String?       @db.Text
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+}
+
+// ==================== PROPERTY MANAGEMENT ====================
+
+enum PropertyType {
+  APARTMENT
+  VILLA
+  COMMERCIAL
+  LAND
+  HOUSE
+  PENTHOUSE
+}
+
+enum PropertyStatus {
+  AVAILABLE
+  SOLD
+  RENTED
+  UNDER_OFFER
+  OFF_MARKET
+}
+
+enum PropertyFurnished {
+  UNFURNISHED
+  SEMI_FURNISHED
+  FULLY_FURNISHED
+}
+
+model Property {
+  id              String            @id @default(cuid())
+  title           String
+  description     String?           @db.Text
+  type            PropertyType
+  status          PropertyStatus    @default(AVAILABLE)
+  
+  // Location
+  address         String
+  city            String
+  state           String?
+  zipCode         String?
+  country         String            @default("India")
+  latitude        Float?
+  longitude       Float?
+  
+  // Property Details
+  bedrooms        Int?
+  bathrooms       Int?
+  squareFeet      Float?
+  furnishedStatus PropertyFurnished  @default(UNFURNISHED)
+  yearBuilt       Int?
+  
+  // Pricing & Financials
+  price           Float
+  originalPrice   Float?
+  pricePerSqft    Float?
+  currency        String            @default("INR")
+  negotiable      Boolean           @default(false)
+  
+  // Agent Assignment
+  agentId         String
+  agent           User              @relation(fields: [agentId], references: [id], onDelete: Restrict)
+  
+  // Images & Media
+  images          PropertyImage[]
+  
+  // Relations
+  leads           Lead[]
+  propertyVisits  PropertyVisit[]
+  commissions     Commission[]
+  
+  // Notes & History
+  notes           String?           @db.Text
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([agentId])
+  @@index([status])
+  @@index([city])
+  @@index([type])
+  @@fulltext([title, description, address])
+}
+
+model PropertyImage {
+  id          String   @id @default(cuid())
+  propertyId  String
+  url         String   @db.Text
+  caption     String?
+  isPrimary   Boolean  @default(false)
+  displayOrder Int
+  createdAt   DateTime @default(now())
+
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId])
+}
+
+// ==================== LEAD MANAGEMENT ====================
+
+enum LeadSource {
+  FACEBOOK
+  WEBSITE
+  WHATSAPP
+  REFERRAL
+  PHONE_CALL
+  EMAIL
+  OTHER
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  INTERESTED
+  SITE_VISIT_SCHEDULED
+  NEGOTIATING
+  CLOSED_WON
+  CLOSED_LOST
+  DEAD
+}
+
+enum LeadType {
+  BUYER
+  SELLER
+  RENTER
+}
+
+model Lead {
+  id              String          @id @default(cuid())
+  
+  // Lead Info
+  firstName       String
+  lastName        String
+  email           String?
+  phone           String
+  type            LeadType        @default(BUYER)
+  
+  // Lead Details
+  source          LeadSource
+  status          LeadStatus      @default(NEW)
+  budgetMin       Float?
+  budgetMax       Float?
+  
+  // Interested Property
+  interestedPropertyId String?
+  interestedProperty   Property?  @relation(fields: [interestedPropertyId], references: [id], onDelete: SetNull)
+  
+  // Assignment
+  assignedAgentId String?
+  assignedAgent   User?           @relation("AssignedAgent", fields: [assignedAgentId], references: [id], onDelete: SetNull)
+  
+  // Activity
+  notes           String?         @db.Text
+  activities      Activity[]
+  propertyVisits  PropertyVisit[]
+  
+  // Follow-up
+  lastContactedAt DateTime?
+  nextFollowUpAt  DateTime?
+  followUpCount   Int             @default(0)
+  
+  // Timeline
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  closedAt        DateTime?
+
+  @@index([status])
+  @@index([source])
+  @@index([assignedAgentId])
+  @@index([interestedPropertyId])
+  @@index([createdAt])
+}
+
+// ==================== ACTIVITY & FOLLOW-UP ====================
+
+enum ActivityType {
+  CALL
+  EMAIL
+  WHATSAPP
+  SMS
+  MEETING
+  SITE_VISIT
+  PROPOSAL_SENT
+  NOTE
+}
+
+model Activity {
+  id        String        @id @default(cuid())
+  leadId    String
+  lead      Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  
+  type      ActivityType
+  title     String
+  notes     String?       @db.Text
+  
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([leadId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+// ==================== PROPERTY VISITS ====================
+
+enum VisitStatus {
+  SCHEDULED
+  COMPLETED
+  NO_SHOW
+  RESCHEDULED
+  CANCELLED
+}
+
+model PropertyVisit {
+  id              String      @id @default(cuid())
+  
+  // Reference
+  leadId          String
+  lead            Lead        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  
+  propertyId      String
+  property        Property    @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  
+  // Agent Assignment
+  assignedAgentId String
+  assignedAgent   User        @relation("AssignedAgent", fields: [assignedAgentId], references: [id], onDelete: Restrict)
+  
+  // Visit Details
+  status          VisitStatus @default(SCHEDULED)
+  scheduledAt     DateTime
+  notes           String?     @db.Text
+  
+  // Completion
+  completedAt     DateTime?
+  feedback        String?     @db.Text
+  rating          Int?        // 1-5 rating from lead
+  
+  // Reminders
+  reminderSentAt  DateTime?
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([leadId])
+  @@index([propertyId])
+  @@index([assignedAgentId])
+  @@index([status])
+  @@index([scheduledAt])
+}
+
+// ==================== COMMISSIONS ====================
+
+enum CommissionStatus {
+  PENDING
+  PAID
+  CANCELLED
+  ON_HOLD
+}
+
+model Commission {
+  id              String             @id @default(cuid())
+  
+  // Related Transaction
+  propertyId      String
+  property        Property           @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  
+  agentId         String
+  agent           User               @relation(fields: [agentId], references: [id], onDelete: Restrict)
+  
+  // Commission Details
+  percentage      Float              // Commission percentage
+  propertyPrice   Float              // Final sale price
+  commissionAmount Float              // Calculated: (propertyPrice * percentage) / 100
+  
+  status          CommissionStatus   @default(PENDING)
+  
+  // Payment Info
+  paidAmount      Float              @default(0)
+  paidAt          DateTime?
+  paymentMethod   String?            // BANK_TRANSFER, CHEQUE, CASH, etc.
+  paymentRef      String?
+  
+  // Notes
+  notes           String?            @db.Text
+  
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([agentId])
+  @@index([propertyId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ==================== BILLING & SUBSCRIPTION (Optional for SaaS) ====================
+
+enum PlanType {
+  FREE
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  PAST_DUE
+  PAUSED
+}
+
+model Organization {
+  id              String             @id @default(cuid())
+  name            String
+  email           String             @unique
+  phone           String?
+  website         String?
+  
+  // Subscription
+  planType        PlanType           @default(FREE)
+  subscriptionStatus SubscriptionStatus @default(ACTIVE)
+  subscriptionStartDate DateTime?
+  subscriptionEndDate DateTime?
+  stripeCustomerId String?            @unique
+  
+  // Settings
+  agentLimit      Int @default(5) // How many agents can use this plan
+  propertyLimit   Int @default(100)
+  leadLimit       Int @default(1000)
+  
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+}
+
+// ==================== ANALYTICS & REPORTS ====================
+
+model DailyMetrics {
+  id              String   @id @default(cuid())
+  date            DateTime @unique
+  
+  // Metrics
+  newLeads        Int      @default(0)
+  closedDeals     Int      @default(0)
+  revenueGenerated Float   @default(0)
+  visitsScheduled Int      @default(0)
+  visitsCompleted Int      @default(0)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([date])
+}
+
+model AgentPerformance {
+  id              String   @id @default(cuid())
+  agentId         String   @unique
+  
+  // Performance Metrics
+  leadsGenerated  Int      @default(0)
+  leadsConverted  Int      @default(0)
+  conversionRate  Float    @default(0)
+  
+  totalSalesValue Float    @default(0)
+  totalCommissions Float   @default(0)
+  averageDealValue Float   @default(0)
+  
+  visitsScheduled Int      @default(0)
+  visitsCompleted Int      @default(0)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
